@@ -8,3 +8,40 @@
 /dataSources.local.xml
 .env
 .idea
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+local_storage/
+
+# Environment
+.env
+
+# Firebase
+config/firebase_service_account.json
+
+# Model (büyük dosya ise)
+models/fall_model.pt
+
+# Temporary files
+*.tmp
+.DS_Store
+Thumbs.db
