@@ -214,6 +214,7 @@ class GuardApplication:
         """GUI'yi başlatır"""
         try:
             import tkinter as tk
+            from config.settings import Settings
             
             # Ana tkinter penceresi oluştur
             root = tk.Tk()
@@ -233,7 +234,7 @@ class GuardApplication:
             
             # Splash screen'i başlat
             from ui.splash_screen import SplashScreen
-            splash = SplashScreen(root, duration=4.0, callback=start_login_window)
+            splash = SplashScreen(root, duration=2.0, callback=start_login_window)
             
             # Ana döngüyü başlat
             root.mainloop()
