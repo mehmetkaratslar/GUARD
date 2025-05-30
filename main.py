@@ -213,11 +213,30 @@ class GuardApplication:
     def run_gui(self):
         """GUI'yi başlatır"""
         try:
-            from ui.login_window import LoginWindow
+            import tkinter as tk
             
-            # Login penceresi oluştur ve çalıştır
-            login_window = LoginWindow()
-            login_window.run()
+            # Ana tkinter penceresi oluştur
+            root = tk.Tk()
+            root.title(f"{Settings.APP_NAME} - v{Settings.APP_VERSION}")
+            
+            def start_login_window():
+                """Splash tamamlandıktan sonra login window'u başlatır"""
+                try:
+                    from ui.login_window import LoginWindow
+                    
+                    # Login penceresi oluştur ve çalıştır
+                    login_window = LoginWindow(root)
+                    
+                except Exception as e:
+                    logging.error(f"Login window başlatılırken hata: {str(e)}")
+                    raise e
+            
+            # Splash screen'i başlat
+            from ui.splash_screen import SplashScreen
+            splash = SplashScreen(root, duration=4.0, callback=start_login_window)
+            
+            # Ana döngüyü başlat
+            root.mainloop()
             
         except Exception as e:
             logging.error(f"GUI başlatılırken hata: {str(e)}")

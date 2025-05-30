@@ -16,9 +16,7 @@
 import logging
 import os
 import uuid
-import tempfile
 import time
-import io
 import cv2
 import numpy as np
 from typing import Optional, List
@@ -53,6 +51,136 @@ class StorageService:
         Returns:
             str: Yüklenen dosyanın URL'si/yolu, hata durumunda None
         """
+        try:
+            if event_id is None:
+                event_id = str(uuid.uuid4())
+                
+            if image is None or image.size == 0:
+                logging.error("Boş görüntü yüklenemez")
+                return None
+                
+            logging.info(f"Ekran görüntüsü yükleniyor - User: {user_id}, Event: {event_id}")
+            
+            # Görüntüyü optimize et
+            optimized_image = self._optimize_image(image)
+            
+            if not self.is_available:
+                return self._upload_local(user_id, optimized_image, event_id)
+            
+            return self._upload_firebase(user_id, optimized_image, event_id)
+                
+        except Exception as e:
+            logging.error(f"Ekran görüntüsü yüklenirken hata oluştu: {str(e)}", exc_info=True)
+            return None
+    
+    def _optimize_image(self, image: np.ndarray) -> np.ndarray:
+        """Görüntüyü optimize eder (boyut ve kalite)"""
+        try:
+            height, width = image.shape[:2]
+            
+            # Maksimum boyutları kontrol et
+            max_width = 1280
+            max_height = 720
+            
+            if width > max_width or height > max_height:
+                # Oranı koruyarak yeniden boyutlandır
+                scale = min(max_width / width, max_height / height)
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                
+                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                logging.debug(f"Görüntü yeniden boyutlandırıldı: {width}x{height} -> {new_width}x{new_height}")
+            
+            return image
+            
+        except Exception as e:
+            logging.error(f"Görüntü optimizasyonunda hata: {str(e)}")
+            return image
+    
+    def _upload_local(self, user_id: str, image: np.ndarray, event_id: str) -> Optional[str]:
+        """Yerel depolamaya kaydet."""
+        try:
+            user_dir = os.path.join(self.local_storage_dir, user_id)
+            os.makedirs(user_dir, exist_ok=True)
+            
+            local_path = os.path.join(user_dir, f"{event_id}.jpg")
+            
+            # OpenCV görüntüsünü JPEG olarak kaydet
+            encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]
+            success = cv2.imwrite(local_path, image, encode_params)
+            
+            if success:
+                logging.info(f"Ekran görüntüsü yerel depolamaya kaydedildi: {local_path}")
+                return f"file://{os.path.abspath(local_path)}"
+            else:
+                logging.error("Görüntü yerel depolamaya kaydedilemedi")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Yerel depolama hatası: {str(e)}")
+            return None
+    
+    def _upload_firebase(self, user_id: str, image: np.ndarray, event_id: str) -> Optional[str]:
+        """Firebase Storage'a yükle."""
+        try:
+            # Görüntüyü JPEG formatında byte dizisine dönüştür
+            encode_param = [cv2.IMWRITE_JPEG_QUALITY, 85]
+            success, img_encoded = cv2.imencode('.jpg', image, encode_param)
+            
+            if not success:
+                logging.error("Görüntü encode edilemedi")
+                return None
+            
+            img_bytes = img_encoded.tobytes()
+            
+            # Firebase Storage yolu
+            destination_path = f"fall_events/{user_id}/{event_id}.jpg"
+            blob = self.bucket.blob(destination_path)
+            
+            # Metadata ekle
+            blob.metadata = {
+                'user_id': user_id,
+                'event_id': event_id,
+                'upload_time': str(int(time.time())),
+                'content_type': 'image/jpeg',
+                'file_size': str(len(img_bytes))
+            }
+            
+            # Byte dizisinden yükle
+            blob.upload_from_string(
+                img_bytes,
+                content_type='image/jpeg'
+            )
+            
+            # Public URL oluştur
+            try:
+                # Access token oluştur
+                access_token = str(uuid.uuid4())
+                blob.metadata['firebaseStorageDownloadTokens'] = access_token
+                blob.patch()
+                
+                # Public URL oluştur
+                bucket_name = self.bucket.name
+                public_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{destination_path.replace('/', '%2F')}?alt=media&token={access_token}"
+                
+                logging.info(f"Ekran görüntüsü Firebase Storage'a yüklendi: {destination_path}")
+                return public_url
+                
+            except Exception as token_error:
+                logging.warning(f"Access token oluşturulamadı: {str(token_error)}")
+                # Signed URL oluştur
+                url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(days=365),
+                    method="GET"
+                )
+                logging.info(f"Signed URL oluşturuldu: {destination_path}")
+                return url
+            
+        except Exception as e:
+            logging.error(f"Firebase Storage yükleme hatası: {str(e)}")
+            return None
+    
     def get_screenshot_url(self, user_id: str, event_id: str) -> Optional[str]:
         """Ekran görüntüsünün URL'sini döndürür."""
         try:
@@ -71,8 +199,6 @@ class StorageService:
                 blob.reload()
                 if blob.metadata and 'firebaseStorageDownloadTokens' in blob.metadata:
                     token = blob.metadata['firebaseStorageDownloadTokens']
-                    import firebase_admin
-                    project_id = firebase_admin._apps['[DEFAULT]']._project_id
                     bucket_name = self.bucket.name
                     return f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{blob_path.replace('/', '%2F')}?alt=media&token={token}"
                 else:
@@ -117,6 +243,34 @@ class StorageService:
         except Exception as e:
             logging.error(f"Görüntü indirilirken hata oluştu: {str(e)}")
             return None
+    
+    def delete_screenshot(self, user_id: str, event_id: str) -> bool:
+        """Ekran görüntüsünü Firebase Storage'dan veya yerel depolamadan siler."""
+        try:
+            if not self.is_available:
+                local_path = os.path.join(self.local_storage_dir, user_id, f"{event_id}.jpg")
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+                    logging.info(f"Ekran görüntüsü yerel depolamadan silindi: {local_path}")
+                    return True
+                else:
+                    logging.warning(f"Silinecek ekran görüntüsü bulunamadı: {local_path}")
+                    return False
+            
+            blob_path = f"fall_events/{user_id}/{event_id}.jpg"
+            blob = self.bucket.blob(blob_path)
+            
+            if blob.exists():
+                blob.delete()
+                logging.info(f"Ekran görüntüsü silindi: {blob_path}")
+                return True
+            else:
+                logging.warning(f"Silinecek ekran görüntüsü bulunamadı: {blob_path}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Ekran görüntüsü silinirken hata oluştu: {str(e)}")
+            return False
     
     def list_all_screenshots(self, user_id: str) -> List[str]:
         """Kullanıcının tüm ekran görüntülerini listeler."""
@@ -285,172 +439,4 @@ def get_storage_service() -> StorageService:
     global _storage_service_instance
     if _storage_service_instance is None:
         _storage_service_instance = StorageService()
-    return _storage_service_instance:
-            if event_id is None:
-                event_id = str(uuid.uuid4())
-                
-            if image is None or image.size == 0:
-                logging.error("Boş görüntü yüklenemez")
-                return None
-                
-            logging.info(f"Ekran görüntüsü yükleniyor - User: {user_id}, Event: {event_id}")
-            
-            # Görüntüyü optimize et
-            optimized_image = self._optimize_image(image)
-            
-            if not self.is_available:
-                return self._upload_local(user_id, optimized_image, event_id)
-            
-            return self._upload_firebase(user_id, optimized_image, event_id)
-                
-        except Exception as e:
-            logging.error(f"Ekran görüntüsü yüklenirken hata oluştu: {str(e)}", exc_info=True)
-            return None
-    
-    def _optimize_image(self, image: np.ndarray) -> np.ndarray:
-        """Görüntüyü optimize eder (boyut ve kalite)"""
-        try:
-            height, width = image.shape[:2]
-            
-            # Maksimum boyutları kontrol et
-            max_width = 1280
-            max_height = 720
-            
-            if width > max_width or height > max_height:
-                # Oranı koruyarak yeniden boyutlandır
-                scale = min(max_width / width, max_height / height)
-                new_width = int(width * scale)
-                new_height = int(height * scale)
-                
-                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
-                logging.debug(f"Görüntü yeniden boyutlandırıldı: {width}x{height} -> {new_width}x{new_height}")
-            
-            return image
-            
-        except Exception as e:
-            logging.error(f"Görüntü optimizasyonunda hata: {str(e)}")
-            return image
-    
-    def _upload_local(self, user_id: str, image: np.ndarray, event_id: str) -> Optional[str]:
-        """Yerel depolamaya kaydet."""
-        try:
-            user_dir = os.path.join(self.local_storage_dir, user_id)
-            os.makedirs(user_dir, exist_ok=True)
-            
-            local_path = os.path.join(user_dir, f"{event_id}.jpg")
-            
-            # OpenCV görüntüsünü JPEG olarak kaydet
-            encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]
-            success = cv2.imwrite(local_path, image, encode_params)
-            
-            if success:
-                logging.info(f"Ekran görüntüsü yerel depolamaya kaydedildi: {local_path}")
-                return f"file://{os.path.abspath(local_path)}"
-            else:
-                logging.error("Görüntü yerel depolamaya kaydedilemedi")
-                return None
-                
-        except Exception as e:
-            logging.error(f"Yerel depolama hatası: {str(e)}")
-            return None
-    
-    def _upload_firebase(self, user_id: str, image: np.ndarray, event_id: str) -> Optional[str]:
-        """Firebase Storage'a yükle."""
-        try:
-            # Görüntüyü JPEG formatında byte dizisine dönüştür
-            encode_param = [cv2.IMWRITE_JPEG_QUALITY, 85]
-            success, img_encoded = cv2.imencode('.jpg', image, encode_param)
-            
-            if not success:
-                logging.error("Görüntü encode edilemedi")
-                return None
-            
-            img_bytes = img_encoded.tobytes()
-            
-            # Firebase Storage yolu
-            destination_path = f"fall_events/{user_id}/{event_id}.jpg"
-            blob = self.bucket.blob(destination_path)
-            
-            # Metadata ekle
-            blob.metadata = {
-                'user_id': user_id,
-                'event_id': event_id,
-                'upload_time': str(int(time.time())),
-                'content_type': 'image/jpeg',
-                'file_size': str(len(img_bytes))
-            }
-            
-            # Byte dizisinden yükle
-            blob.upload_from_string(
-                img_bytes,
-                content_type='image/jpeg'
-            )
-            
-            # Public URL oluştur
-            try:
-                # Access token oluştur
-                access_token = str(uuid.uuid4())
-                blob.metadata = blob.metadata or {}
-                blob.metadata['firebaseStorageDownloadTokens'] = access_token
-                blob.patch()
-                
-                # Public URL oluştur
-                import firebase_admin
-                project_id = firebase_admin._apps['[DEFAULT]']._project_id
-                bucket_name = self.bucket.name
-                public_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{destination_path.replace('/', '%2F')}?alt=media&token={access_token}"
-                
-                logging.info(f"Ekran görüntüsü Firebase Storage'a yüklendi: {destination_path}")
-                return public_url
-                
-            except Exception as token_error:
-                logging.warning(f"Access token oluşturulamadı: {str(token_error)}")
-                
-                try:
-                    # Signed URL oluştur
-                    url = blob.generate_signed_url(
-                        version="v4",
-                        expiration=timedelta(days=365),
-                        method="GET"
-                    )
-                    logging.info(f"Signed URL oluşturuldu: {destination_path}")
-                    return url
-                except Exception as signed_error:
-                    logging.error(f"Signed URL oluşturulamadı: {str(signed_error)}")
-                    return f"https://storage.googleapis.com/{self.bucket.name}/{destination_path}"
-            
-        except Exception as e:
-            logging.error(f"Firebase Storage yükleme hatası: {str(e)}", exc_info=True)
-            return None
-    
-    def delete_screenshot(self, user_id: str, event_id: str) -> bool:
-        """Ekran görüntüsünü Firebase Storage'dan veya yerel depolamadan siler."""
-        try:
-            if not self.is_available:
-                local_path = os.path.join(self.local_storage_dir, user_id, f"{event_id}.jpg")
-                if os.path.exists(local_path):
-                    os.remove(local_path)
-                    logging.info(f"Ekran görüntüsü yerel depolamadan silindi: {local_path}")
-                    return True
-                else:
-                    logging.warning(f"Silinecek ekran görüntüsü bulunamadı: {local_path}")
-                    return False
-            
-            blob_path = f"fall_events/{user_id}/{event_id}.jpg"
-            blob = self.bucket.blob(blob_path)
-            
-            if blob.exists():
-                blob.delete()
-                logging.info(f"Ekran görüntüsü silindi: {blob_path}")
-                return True
-            else:
-                logging.warning(f"Silinecek ekran görüntüsü bulunamadı: {blob_path}")
-                return False
-                
-        except Exception as e:
-            logging.error(f"Ekran görüntüsü silinirken hata oluştu: {str(e)}")
-            return False
-    
-    def get_screenshot_url(self, user_id: str, event_id: str) -> Optional[str]:
-        """Ekran görüntüsünün URL'sini döndürür."""
-        try
+    return _storage_service_instance

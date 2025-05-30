@@ -28,9 +28,15 @@ from services.database_service import get_database_service
 class LoginWindow:
     """Giriş/Kayıt penceresi sınıfı"""
     
-    def __init__(self):
+    def __init__(self, root=None):
         """Login penceresini başlatır"""
-        self.root = None
+        if root is None:
+            self.root = tk.Tk()
+            self.owns_root = True
+        else:
+            self.root = root
+            self.owns_root = False
+            
         self.auth_service = get_auth_service()
         self.database_service = get_database_service()
         
@@ -42,11 +48,13 @@ class LoginWindow:
         # Durum
         self.is_authenticating = False
         
+        # Pencereyi oluştur
+        self.create_window()
+        
         logging.info("LoginWindow oluşturuldu")
     
     def create_window(self):
         """Ana pencereyi oluşturur"""
-        self.root = tk.Tk()
         self.root.title(f"{Settings.APP_NAME} - Giriş")
         self.root.geometry("500x600")
         self.root.resizable(False, False)
@@ -411,17 +419,13 @@ class LoginWindow:
     def _open_main_window(self, user_data):
         """Ana pencereyi açar"""
         try:
-            # Login penceresini gizle
-            self.root.withdraw()
-            
             # Ana pencereyi import et ve aç
             from ui.main_window import MainWindow
             
-            main_window = MainWindow(user_data)
-            main_window.run()
+            main_window = MainWindow(user_data, self.root)
             
-            # Ana pencere kapandıktan sonra login penceresini kapat
-            self.root.quit()
+            # Login penceresini gizle
+            self._hide_login_window()
             
         except Exception as e:
             logging.error(f"Ana pencere açılırken hata: {str(e)}")
@@ -431,8 +435,18 @@ class LoginWindow:
             )
             
             # Login penceresini tekrar göster
-            self.root.deiconify()
-            self._update_ui_state(False)
+            self._show_login_window()
+    
+    def _hide_login_window(self):
+        """Login penceresini gizler"""
+        # Sadece içeriği gizle, pencereyi kapat
+        for widget in self.root.winfo_children():
+            widget.pack_forget()
+    
+    def _show_login_window(self):
+        """Login penceresini tekrar gösterir"""
+        self._create_widgets()
+        self._update_ui_state(False)
     
     def _on_window_close(self):
         """Pencere kapatma olayını işler"""
@@ -446,11 +460,21 @@ class LoginWindow:
                     return
             
             logging.info("Login penceresi kapatılıyor")
-            self.root.quit()
+            
+            if self.owns_root:
+                self.root.quit()
+            else:
+                # Ana pencereyi kapatma, sadece uygulamadan çık
+                import sys
+                sys.exit(0)
             
         except Exception as e:
             logging.error(f"Pencere kapatılırken hata: {str(e)}")
-            self.root.quit()
+            if self.owns_root:
+                self.root.quit()
+            else:
+                import sys
+                sys.exit(0)
     
     def run(self):
         """Pencereyi çalıştırır"""

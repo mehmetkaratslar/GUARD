@@ -24,6 +24,7 @@ import time
 import logging
 from typing import Dict, Optional
 import webbrowser
+import os
 
 from config.settings import Settings
 from services.camera_service import get_camera_service, initialize_camera_service
@@ -34,13 +35,20 @@ from services.notification_service import get_notification_service
 class MainWindow:
     """Ana uygulama penceresi sınıfı"""
     
-    def __init__(self, user_data: Dict):
+    def __init__(self, user_data: Dict, root: tk.Tk = None):
         """Ana pencereyi başlatır"""
         self.user_data = user_data
         self.user_id = user_data['uid']
         
-        # Pencere ve UI
-        self.root = None
+        # Pencere yönetimi
+        if root is None:
+            self.root = tk.Tk()
+            self.owns_root = True
+        else:
+            self.root = root
+            self.owns_root = False
+        
+        # UI bileşenleri
         self.video_label = None
         self.status_label = None
         self.detection_status_label = None
@@ -60,6 +68,7 @@ class MainWindow:
         self.start_button = None
         self.detection_button = None
         self.streaming_button = None
+        self.test_button = None
         self.stats_frame = None
         
         # Video güncelleme
@@ -75,7 +84,6 @@ class MainWindow:
     
     def create_window(self):
         """Ana pencereyi oluşturur"""
-        self.root = tk.Tk()
         self.root.title(f"{Settings.APP_NAME} - {self.user_data['name']}")
         self.root.geometry(f"{Settings.WINDOW_WIDTH}x{Settings.WINDOW_HEIGHT}")
         self.root.minsize(Settings.MIN_WINDOW_WIDTH, Settings.MIN_WINDOW_HEIGHT)
@@ -246,18 +254,21 @@ class MainWindow:
         self.streaming_button = ttk.Button(
             controls_frame,
             text="📡 Canlı Yayın",
+            style='Large.TButton',
             command=self._toggle_streaming,
             state='disabled'
         )
         self.streaming_button.pack(fill=tk.X, pady=(0, 5))
         
         # Test bildirimi
-        test_button = ttk.Button(
+        self.test_button = ttk.Button(
             controls_frame,
             text="🔔 Test Bildirimi",
-            command=self._send_test_notification
+            style='Large.TButton',
+            command=self._send_test_notification,
+            state='normal'
         )
-        test_button.pack(fill=tk.X)
+        self.test_button.pack(fill=tk.X, pady=(0, 5))
     
     def _create_status_panel(self, parent):
         """Durum panelini oluşturur"""
@@ -350,6 +361,7 @@ class MainWindow:
                     self.start_button.config(text="⏹️ Kamerayı Durdur")
                     self.detection_button.config(state='normal')
                     self.streaming_button.config(state='normal')
+                    self.test_button.config(state='normal')
                     self._update_status("Kamera başlatıldı", "green")
                     
                     # Video güncelleme döngüsünü başlat
@@ -363,6 +375,7 @@ class MainWindow:
                 self.start_button.config(text="📹 Kamerayı Başlat")
                 self.detection_button.config(state='disabled')
                 self.streaming_button.config(state='disabled')
+                self.test_button.config(state='disabled')
                 
                 # Tespiti de durdur
                 if self.is_detection_active.get():
@@ -816,16 +829,18 @@ class MainWindow:
             # İstatistik güncellemesini başlat
             self._update_stats()
             
-            self.root.mainloop()
+            if self.owns_root:
+                self.root.mainloop()
             
         except Exception as e:
             logging.error(f"Ana pencere çalışırken hata: {str(e)}")
             raise e
         finally:
-            try:
-                self.root.destroy()
-            except:
-                pass
+            if self.owns_root:
+                try:
+                    self.root.destroy()
+                except:
+                    pass
 
 # Test fonksiyonu
 def test_main_window():
@@ -847,3 +862,4 @@ def test_main_window():
         logging.error(f"Test sırasında hata: {str(e)}")
 
 if __name__ == "__main__":
+    test_main_window()
