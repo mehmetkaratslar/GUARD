@@ -170,6 +170,8 @@ class GuardApplication:
         """Uygulamayı başlatır"""
         self.is_running = False
         self.services_initialized = False
+        self.root = None
+        self.cleanup_done = False
         
         # Cleanup handler'ları kaydet
         atexit.register(self.cleanup)
@@ -217,27 +219,40 @@ class GuardApplication:
             from config.settings import Settings
             
             # Ana tkinter penceresi oluştur
-            root = tk.Tk()
-            root.title(f"{Settings.APP_NAME} - v{Settings.APP_VERSION}")
+            self.root = tk.Tk()
+            self.root.title(f"{Settings.APP_NAME} - v{Settings.APP_VERSION}")
+            
+            # Pencereyi gizle (splash screen için)
+            self.root.withdraw()
             
             def start_login_window():
                 """Splash tamamlandıktan sonra login window'u başlatır"""
                 try:
                     from ui.login_window import LoginWindow
                     
-                    # Login penceresi oluştur ve çalıştır
-                    login_window = LoginWindow(root)
+                    logging.info("Login window başlatılıyor...")
+                    
+                    # Login penceresi oluştur
+                    login_window = LoginWindow(self.root)
+                    
+                    # Login window'u göster
+                    login_window.create_window()
+                    
+                    logging.info("Login window başarıyla oluşturuldu")
                     
                 except Exception as e:
                     logging.error(f"Login window başlatılırken hata: {str(e)}")
-                    raise e
+                    # Hata durumunda uygulamayı kapat
+                    self.root.quit()
             
             # Splash screen'i başlat
             from ui.splash_screen import SplashScreen
-            splash = SplashScreen(root, duration=2.0, callback=start_login_window)
+            
+            logging.info("SplashScreen başlatılıyor - süre: 2.0s")
+            splash = SplashScreen(self.root, duration=2.0, callback=start_login_window)
             
             # Ana döngüyü başlat
-            root.mainloop()
+            self.root.mainloop()
             
         except Exception as e:
             logging.error(f"GUI başlatılırken hata: {str(e)}")
@@ -268,16 +283,26 @@ class GuardApplication:
     
     def cleanup(self):
         """Kaynakları temizler"""
-        if not self.is_running:
+        if self.cleanup_done:
             return
-        
+            
         try:
             logging.info("Uygulama kapatılıyor, kaynaklar temizleniyor...")
             
             # Servisleri temizle
-            self._cleanup_services()
+            if self.services_initialized:
+                self._cleanup_services()
+            
+            # Root pencereyi kapat
+            if self.root:
+                try:
+                    self.root.quit()
+                    self.root.destroy()
+                except:
+                    pass
             
             self.is_running = False
+            self.cleanup_done = True
             logging.info("Uygulama başarıyla kapatıldı")
             
         except Exception as e:
@@ -287,19 +312,28 @@ class GuardApplication:
         """Servisleri temizler"""
         try:
             # Camera service'i temizle
-            from services.camera_service import get_camera_service
-            camera_service = get_camera_service()
-            camera_service.cleanup()
+            try:
+                from services.camera_service import get_camera_service
+                camera_service = get_camera_service()
+                camera_service.cleanup()
+            except Exception as e:
+                logging.warning(f"Camera service cleanup hatası: {str(e)}")
             
             # Streaming service'i temizle
-            from services.streaming_service import get_streaming_service
-            streaming_service = get_streaming_service()
-            streaming_service.cleanup()
+            try:
+                from services.streaming_service import get_streaming_service
+                streaming_service = get_streaming_service()
+                streaming_service.cleanup()
+            except Exception as e:
+                logging.warning(f"Streaming service cleanup hatası: {str(e)}")
             
             # Fall detector'ı temizle
-            from models.fall_detector import get_fall_detector
-            fall_detector = get_fall_detector()
-            fall_detector.cleanup()
+            try:
+                from models.fall_detector import get_fall_detector
+                fall_detector = get_fall_detector()
+                fall_detector.cleanup()
+            except Exception as e:
+                logging.warning(f"Fall detector cleanup hatası: {str(e)}")
             
             logging.info("Tüm servisler temizlendi")
             

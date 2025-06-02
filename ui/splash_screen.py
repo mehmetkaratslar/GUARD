@@ -40,6 +40,8 @@ class SplashScreen:
         self.splash_window = None
         self.particles = []  # Parçacık animasyonu için
         
+        logging.info(f"SplashScreen başlatılıyor - süre: {duration}s")
+        
         # Ana pencereyi gizle
         self.root.withdraw()
         
@@ -633,10 +635,10 @@ class SplashScreen:
     
     def _close_splash(self):
         """Yumuşak geçiş ile splash ekranını kapatır."""
-        if self.splash_window and self.splash_window.winfo_exists():
-            try:
-                logging.info("Splash screen kapatılıyor...")
-                
+        try:
+            logging.info("Splash screen kapatılıyor...")
+            
+            if self.splash_window and self.splash_window.winfo_exists():
                 # Yumuşak kapanış animasyonu
                 for alpha in range(10, -1, -1):
                     if self.splash_window and self.splash_window.winfo_exists():
@@ -645,41 +647,35 @@ class SplashScreen:
                         time.sleep(0.02)
                 
                 # Splash window'u yok et
-                if self.splash_window and self.splash_window.winfo_exists():
-                    self.splash_window.destroy()
-                    self.splash_window = None
-                
-                # Ana pencereyi göster
-                self.root.deiconify()
-                self.root.update()
-                self.root.focus_force()  # Pencereye odaklanmayı zorla
-                
-                # Callback fonksiyonunu çağır
-                if self.callback:
-                    self.callback()
-                
-                logging.info("Splash screen başarıyla kapatıldı")
-                
-            except Exception as e:
-                logging.error(f"Splash ekranı kapatılırken hata: {str(e)}")
-                # Hata durumunda temiz bir şekilde kapat
-                if self.splash_window:
-                    try:
-                        self.splash_window.destroy()
-                    except:
-                        pass
-                    self.splash_window = None
-                
-                self.root.deiconify()
-                
-                # Callback'i yine de çağır
-                if self.callback:
-                    self.callback()
-        else:
-            # Splash penceresi yoksa doğrudan işlemleri yap
+                self.splash_window.destroy()
+                self.splash_window = None
+            
+            # Ana pencereyi göster
             self.root.deiconify()
+            self.root.update()
+            self.root.focus_force()
+            
+            # Callback fonksiyonunu ana thread'de çağır
             if self.callback:
-                self.callback()
+                self.root.after(100, self.callback)  # 100ms sonra çağır
+            
+            logging.info("Splash screen başarıyla kapatıldı")
+            
+        except Exception as e:
+            logging.error(f"Splash ekranı kapatılırken hata: {str(e)}")
+            # Hata durumunda temiz bir şekilde kapat
+            try:
+                if self.splash_window:
+                    self.splash_window.destroy()
+            except:
+                pass
+            self.splash_window = None
+            
+            self.root.deiconify()
+            
+            # Callback'i yine de çağır
+            if self.callback:
+                self.root.after(100, self.callback)
     
     def force_close(self):
         """Splash ekranını zorla kapatır (acil durum için)"""

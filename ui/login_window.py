@@ -55,29 +55,36 @@ class LoginWindow:
     
     def create_window(self):
         """Ana pencereyi oluşturur"""
-        self.root.title(f"{Settings.APP_NAME} - Giriş")
-        self.root.geometry("500x600")
-        self.root.resizable(False, False)
-        
-        # İkon ayarla (varsa)
         try:
-            icon_path = os.path.join("assets", "icons", "guard_icon.ico")
-            if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
+            self.root.title(f"{Settings.APP_NAME} - Giriş")
+            self.root.geometry("600x700")
+            self.root.resizable(False, False)
+            
+            # İkon ayarla (varsa)
+            try:
+                icon_path = os.path.join("assets", "icons", "guard_icon.ico")
+                if os.path.exists(icon_path):
+                    self.root.iconbitmap(icon_path)
+            except Exception as e:
+                logging.warning(f"İkon yüklenemedi: {str(e)}")
+            
+            # Pencereyi ortala
+            self._center_window()
+            
+            # Stil ayarları
+            self._setup_styles()
+            
+            # UI bileşenlerini oluştur
+            self._create_widgets()
+            
+            # Pencere kapatma olayı
+            self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
+            
+            logging.info("Login window başarıyla oluşturuldu")
+            
         except Exception as e:
-            logging.warning(f"İkon yüklenemedi: {str(e)}")
-        
-        # Pencereyi ortala
-        self._center_window()
-        
-        # Stil ayarları
-        self._setup_styles()
-        
-        # UI bileşenlerini oluştur
-        self._create_widgets()
-        
-        # Pencere kapatma olayı
-        self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
+            logging.error(f"Login window oluşturulurken hata: {str(e)}")
+            raise e
     
     def _center_window(self):
         """Pencereyi ekranın ortasında konumlandırır"""
@@ -89,10 +96,10 @@ class LoginWindow:
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
+        x = (screen_width - 600) // 2
+        y = (screen_height - 700) // 2
         
-        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.root.geometry(f"600x700+{x}+{y}")
     
     def _setup_styles(self):
         """Stil ayarlarını yapar"""
@@ -102,35 +109,80 @@ class LoginWindow:
         try:
             if Settings.THEME_MODE == "dark":
                 style.theme_use('clam')
+                self.bg_color = "#2C3E50"
+                self.fg_color = "#ECF0F1"
+                self.accent_color = "#3498DB"
+                self.button_bg = "#2980B9"
+                self.button_fg = "#FFFFFF"
+                self.error_color = "#E74C3C"
+                self.success_color = "#2ECC71"
             else:
                 style.theme_use('default')
+                self.bg_color = "#F5F6F5"
+                self.fg_color = "#2C3E50"
+                self.accent_color = "#1ABC9C"
+                self.button_bg = "#16A085"
+                self.button_fg = "#FFFFFF"
+                self.error_color = "#C0392B"
+                self.success_color = "#27AE60"
         except Exception as e:
             logging.warning(f"Tema ayarlanamadı: {str(e)}")
             style.theme_use('default')
+            self.bg_color = "#F5F6F5"
+            self.fg_color = "#2C3E50"
+            self.accent_color = "#1ABC9C"
+            self.button_bg = "#16A085"
+            self.button_fg = "#FFFFFF"
+            self.error_color = "#C0392B"
+            self.success_color = "#27AE60"
         
         # Özel stiller
-        style.configure('Title.TLabel', font=('Arial', 24, 'bold'))
-        style.configure('Subtitle.TLabel', font=('Arial', 12))
-        style.configure('Large.TButton', font=('Arial', 12, 'bold'), padding=10)
-        style.configure('Status.TLabel', font=('Arial', 10))
+        style.configure('Title.TLabel', font=('Helvetica', 28, 'bold'), foreground=self.fg_color)
+        style.configure('Subtitle.TLabel', font=('Helvetica', 14), foreground=self.fg_color)
+        style.configure('Large.TButton', font=('Helvetica', 14, 'bold'), padding=12)
+        style.configure('Status.TLabel', font=('Helvetica', 12), foreground=self.fg_color)
+        style.configure('Info.TLabel', font=('Helvetica', 10), foreground=self.fg_color)
+        
+        # Button stilleri
+        style.configure('Custom.TButton', background=self.button_bg, foreground=self.button_fg)
+        style.map('Custom.TButton',
+                  background=[('active', self.accent_color)],
+                  foreground=[('active', self.button_fg)])
     
     def _create_widgets(self):
         """UI bileşenlerini oluşturur"""
+        # Gradient background
+        self.canvas = tk.Canvas(self.root, width=600, height=700, highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Gradient effect
+        for i in range(700):
+            t = i / 700
+            r = int(44 + (245 - 44) * t)
+            g = int(62 + (246 - 62) * t)
+            b = int(80 + (245 - 80) * t)
+            color = f'#{r:02x}{g:02x}{b:02x}'
+            self.canvas.create_line(0, i, 600, i, fill=color)
+        
         # Ana frame
-        main_frame = ttk.Frame(self.root, padding="30")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame = ttk.Frame(self.canvas, padding="40", style='Main.TFrame')
+        self.canvas.create_window(300, 350, window=main_frame, anchor='center')
+        
+        # Arka plan için yarı saydam efekt
+        style = ttk.Style()
+        style.configure('Main.TFrame', background=self.bg_color, relief='raised', borderwidth=2)
         
         # Logo/başlık alanı
         self._create_header(main_frame)
         
         # Spacer
-        ttk.Frame(main_frame, height=30).pack()
+        ttk.Frame(main_frame, height=20).pack()
         
         # Giriş alanı
         self._create_login_section(main_frame)
         
         # Spacer
-        ttk.Frame(main_frame, height=30).pack()
+        ttk.Frame(main_frame, height=20).pack()
         
         # Durum alanı
         self._create_status_section(main_frame)
@@ -148,12 +200,12 @@ class LoginWindow:
             logo_path = os.path.join("assets", "images", "guard_logo.png")
             if os.path.exists(logo_path):
                 logo_image = Image.open(logo_path)
-                logo_image = logo_image.resize((80, 80), Image.Resampling.LANCZOS)
+                logo_image = logo_image.resize((100, 100), Image.Resampling.LANCZOS)
                 logo_photo = ImageTk.PhotoImage(logo_image)
                 
-                logo_label = ttk.Label(header_frame, image=logo_photo)
+                logo_label = ttk.Label(header_frame, image=logo_photo, background=self.bg_color)
                 logo_label.image = logo_photo  # Referansı sakla
-                logo_label.pack(pady=(0, 10))
+                logo_label.pack(pady=(0, 15))
         except Exception as e:
             logging.debug(f"Logo yüklenemedi: {str(e)}")
         
@@ -161,7 +213,8 @@ class LoginWindow:
         title_label = ttk.Label(
             header_frame,
             text=Settings.APP_NAME,
-            style='Title.TLabel'
+            style='Title.TLabel',
+            background=self.bg_color
         )
         title_label.pack()
         
@@ -169,28 +222,35 @@ class LoginWindow:
         subtitle_label = ttk.Label(
             header_frame,
             text="Gerçek Zamanlı Düşme Algılama Sistemi",
-            style='Subtitle.TLabel'
+            style='Subtitle.TLabel',
+            background=self.bg_color
         )
-        subtitle_label.pack(pady=(5, 0))
+        subtitle_label.pack(pady=(10, 0))
         
         # Versiyon
         version_label = ttk.Label(
             header_frame,
             text=f"v{Settings.APP_VERSION}",
-            font=('Arial', 8)
+            font=('Helvetica', 10),
+            foreground=self.fg_color,
+            background=self.bg_color
         )
-        version_label.pack(pady=(5, 0))
+        version_label.pack(pady=(10, 0))
     
     def _create_login_section(self, parent):
         """Giriş bölümünü oluşturur"""
-        login_frame = ttk.LabelFrame(parent, text="Giriş Yap", padding="20")
+        login_frame = ttk.LabelFrame(parent, text="Giriş Yap", padding="20", style='Login.TFrame')
         login_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        style = ttk.Style()
+        style.configure('Login.TFrame', background=self.bg_color, relief='flat')
         
         # Açıklama
         info_label = ttk.Label(
             login_frame,
             text="Guard'ı kullanmak için Google hesabınızla giriş yapın.",
-            style='Subtitle.TLabel'
+            style='Subtitle.TLabel',
+            background=self.bg_color
         )
         info_label.pack(pady=(0, 20))
         
@@ -198,17 +258,19 @@ class LoginWindow:
         self.login_button = ttk.Button(
             login_frame,
             text="🔐 Google ile Giriş Yap",
-            style='Large.TButton',
+            style='Custom.TButton',
             command=self._start_google_login
         )
-        self.login_button.pack(pady=10)
+        self.login_button.pack(pady=10, fill=tk.X)
         
         # Progress bar
         self.progress_bar = ttk.Progressbar(
             login_frame,
             mode='indeterminate',
-            length=300
+            length=300,
+            style='Custom.Horizontal.TProgressbar'
         )
+        style.configure('Custom.Horizontal.TProgressbar', troughcolor=self.bg_color, background=self.accent_color)
         self.progress_bar.pack(pady=(10, 0))
         self.progress_bar.pack_forget()  # Başlangıçta gizle
         
@@ -216,21 +278,26 @@ class LoginWindow:
         offline_button = ttk.Button(
             login_frame,
             text="🔄 Çevrimdışı Modda Devam Et",
+            style='Custom.TButton',
             command=self._start_offline_mode
         )
-        offline_button.pack(pady=(10, 0))
+        offline_button.pack(pady=(10, 0), fill=tk.X)
     
     def _create_status_section(self, parent):
         """Durum bölümünü oluşturur"""
-        status_frame = ttk.Frame(parent)
+        status_frame = ttk.Frame(parent, style='Status.TFrame')
         status_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        style = ttk.Style()
+        style.configure('Status.TFrame', background=self.bg_color)
         
         # Durum etiketi
         self.status_label = ttk.Label(
             status_frame,
             text="Giriş yapmak için yukarıdaki butona tıklayın",
             style='Status.TLabel',
-            foreground='gray'
+            foreground='gray',
+            background=self.bg_color
         )
         self.status_label.pack()
         
@@ -239,28 +306,49 @@ class LoginWindow:
     
     def _create_system_status(self, parent):
         """Sistem durumu bilgilerini oluşturur"""
-        status_frame = ttk.LabelFrame(parent, text="Sistem Durumu", padding="10")
+        status_frame = ttk.LabelFrame(parent, text="Sistem Durumu", padding="15", style='Status.TFrame')
         status_frame.pack(fill=tk.X, pady=(20, 0))
         
         # Firebase durumu
         firebase_status = "✅ Bağlı" if self._check_firebase_connection() else "❌ Bağlanamadı"
-        firebase_label = ttk.Label(status_frame, text=f"Firebase: {firebase_status}")
-        firebase_label.pack(anchor=tk.W)
+        firebase_label = ttk.Label(
+            status_frame,
+            text=f"Firebase: {firebase_status}",
+            font=('Helvetica', 12),
+            background=self.bg_color,
+            foreground=self.fg_color
+        )
+        firebase_label.pack(anchor=tk.W, pady=5)
         
         # Model durumu
         model_status = "✅ Yüklendi" if self._check_model_status() else "❌ Yüklenemedi"
-        model_label = ttk.Label(status_frame, text=f"AI Model: {model_status}")
-        model_label.pack(anchor=tk.W)
+        model_label = ttk.Label(
+            status_frame,
+            text=f"AI Model: {model_status}",
+            font=('Helvetica', 12),
+            background=self.bg_color,
+            foreground=self.fg_color
+        )
+        model_label.pack(anchor=tk.W, pady=5)
         
         # Kamera durumu
         camera_status = "✅ Hazır" if self._check_camera_status() else "❌ Bulunamadı"
-        camera_label = ttk.Label(status_frame, text=f"Kamera: {camera_status}")
-        camera_label.pack(anchor=tk.W)
+        camera_label = ttk.Label(
+            status_frame,
+            text=f"Kamera: {camera_status}",
+            font=('Helvetica', 12),
+            background=self.bg_color,
+            foreground=self.fg_color
+        )
+        camera_label.pack(anchor=tk.W, pady=5)
     
     def _create_footer(self, parent):
         """Footer alanını oluşturur"""
-        footer_frame = ttk.Frame(parent)
+        footer_frame = ttk.Frame(parent, style='Footer.TFrame')
         footer_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        style = ttk.Style()
+        style.configure('Footer.TFrame', background=self.bg_color)
         
         # Bilgi metni
         info_text = (
@@ -271,12 +359,12 @@ class LoginWindow:
         info_label = ttk.Label(
             footer_frame,
             text=info_text,
-            font=('Arial', 8),
-            foreground='gray',
-            wraplength=400,
+            style='Info.TLabel',
+            background=self.bg_color,
+            wraplength=500,
             justify=tk.CENTER
         )
-        info_label.pack(pady=10)
+        info_label.pack(pady=20)
     
     def _check_firebase_connection(self) -> bool:
         """Firebase bağlantısını kontrol eder"""
@@ -368,14 +456,14 @@ class LoginWindow:
             self.database_service.create_new_user(user_data['uid'], user_data)
             self.database_service.update_last_login(user_data['uid'])
             
-            self._update_status("Giriş başarılı! Ana pencere açılıyor...", "green")
+            self._update_status("Giriş başarılı! Ana pencere açılıyor...", self.success_color)
             
             # Kısa gecikme sonrası ana pencereyi aç
             self.root.after(1000, lambda: self._open_main_window(user_data))
             
         except Exception as e:
             logging.error(f"Login success işlenirken hata: {str(e)}")
-            self._update_status(f"Hata: {str(e)}", "red")
+            self._update_status(f"Hata: {str(e)}", self.error_color)
             self._update_ui_state(False)
     
     def _on_login_error(self, error_message):
@@ -387,7 +475,7 @@ class LoginWindow:
     
     def _handle_login_error(self, error_message):
         """Ana thread'de giriş hatasını işler"""
-        self._update_status(f"Giriş hatası: {error_message}", "red")
+        self._update_status(f"Giriş hatası: {error_message}", self.error_color)
         self._update_ui_state(False)
         
         # Hata mesajı göster
@@ -403,7 +491,7 @@ class LoginWindow:
             self.login_button.config(state='disabled', text="Giriş yapılıyor...")
             self.progress_bar.pack(pady=(10, 0))
             self.progress_bar.start()
-            self._update_status("Google OAuth sayfası açılıyor...", "blue")
+            self._update_status("Google OAuth sayfası açılıyor...", self.accent_color)
         else:
             self.login_button.config(state='normal', text="🔐 Google ile Giriş Yap")
             self.progress_bar.stop()
@@ -439,9 +527,8 @@ class LoginWindow:
     
     def _hide_login_window(self):
         """Login penceresini gizler"""
-        # Sadece içeriği gizle, pencereyi kapat
         for widget in self.root.winfo_children():
-            widget.pack_forget()
+            widget.destroy()
     
     def _show_login_window(self):
         """Login penceresini tekrar gösterir"""
@@ -464,7 +551,6 @@ class LoginWindow:
             if self.owns_root:
                 self.root.quit()
             else:
-                # Ana pencereyi kapatma, sadece uygulamadan çık
                 import sys
                 sys.exit(0)
             
